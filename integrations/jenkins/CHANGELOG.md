@@ -7,8 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- towncrier release notes start -->
 
-## 0.1.63 (2024-10-09)
+## 0.1.64 (2024-10-10)
 
+### Improvements
+
+- Add `aborted` to Jenkins job status enum.
+- Add `ABORTED` to Jenkins build status enum.
+- Update URLs in Jenkins job and build blueprints to have url format
+
+
+## 0.1.63 (2024-10-09)
 
 ### Improvements
 
