@@ -15,7 +15,7 @@ class AccountNotFoundError(OceanAbortException):
     pass
 
 
-ASSUME_ROLE_DURATION_SECONDS = 3600  # 1 hour
+ASSUME_ROLE_DURATION_SECONDS = 900  # 1 hour
 
 
 class SessionManager:
@@ -153,21 +153,20 @@ class SessionManager:
         self, sts_client: STSClient, account: dict[str, Any]
     ) -> None:
         try:
-            account_role = await sts_client.assume_role(
-                RoleArn=f'arn:aws:iam::{account["Id"]}:role/{self._get_account_read_role_name()}',
-                RoleSessionName="OceanMemberAssumeRoleSession",
-                DurationSeconds=ASSUME_ROLE_DURATION_SECONDS,
-            )
-            raw_credentials = account_role["Credentials"]
+            role_arn = f"arn:aws:iam::{account['Id']}:role/{self._get_account_read_role_name()}"
+            session_name = "OceanMemberAssumeRoleSession"
+
             credentials = AwsCredentials(
                 account_id=account["Id"],
-                access_key_id=raw_credentials["AccessKeyId"],
-                secret_access_key=raw_credentials["SecretAccessKey"],
-                session_token=raw_credentials["SessionToken"],
+                sts_client=sts_client,
+                role_arn=role_arn,
+                session_name=session_name,
+                duration=ASSUME_ROLE_DURATION_SECONDS,
             )
             await credentials.update_enabled_regions()
             self._aws_credentials.append(credentials)
             self._aws_accessible_accounts.append(account)
+
         except sts_client.exceptions.ClientError as e:
             if is_access_denied_exception(e):
                 logger.info(f"Cannot assume role in account {account['Id']}. Skipping.")
