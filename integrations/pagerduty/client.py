@@ -5,8 +5,10 @@ import httpx
 from loguru import logger
 from port_ocean.context.event import event
 from port_ocean.utils import http_async_client
+from port_ocean.utils.cache import cache_iterator_result
 
-from .utils import get_date_range_for_last_n_months
+from utils import ObjectKind as Resources
+from utils import get_date_range_for_last_n_months
 
 USER_KEY = "users"
 
@@ -204,23 +206,66 @@ class PagerDutyClient:
             ]
         return services
 
-    async def get_incident_analytics(self, incident_id: str) -> dict[str, Any]:
-        logger.info(f"Fetching analytics for incident: {incident_id}")
+    async def get_incident_analytics_by_services(
+        self, service_ids: list[str]
+    ) -> AsyncGenerator[list[dict[str, Any]], Any]:
+        logger.info(f"Fetching analytics for services : {service_ids}")
 
+        starting_after = None
+        more = True
         try:
-            data = await self.send_api_request(
-                endpoint=f"analytics/raw/incidents/{incident_id}", method="GET"
-            )
-            return data
-        except (httpx.HTTPStatusError, httpx.HTTPError) as e:
-            if isinstance(e, httpx.HTTPStatusError) and e.response.status_code == 404:
-                logger.debug(
-                    f"Incident {incident_id} analytics data was not found, skipping..."
+            while more:
+                data = await self.send_api_request(
+                    endpoint="analytics/raw/incidents",
+                    method="POST",
+                    json_data={
+                        "filters": {"service_ids": service_ids},
+                        "starting_after": starting_after,
+                    },
+                    extensions={
+                        "retryable": True,
+                    },
                 )
-                return {}
-            else:
-                logger.error(f"Error fetching incident analytics data: {e}")
-                return {}
+                yield data["data"]
+                more = data["more"]
+                starting_after = data["starting_after"]
+        except httpx.HTTPStatusError as e:
+            logger.error(
+                f"Got {e.response.status_code} status code "
+                f"while fetching incident analytics: {str(e)}"
+            )
+            raise
+        except httpx.HTTPError as e:
+            logger.error(
+                f"Got an HTTP error while fetching " f"incident analytics: {str(e)}"
+            )
+            raise
+
+    async def enrich_incidents_with_analytics_data(
+        self, incidents: dict[str, Any], analytics_data: dict[str, Any]
+    ) -> list[dict[str, Any]]:
+        for id, incident in incidents.items():
+            incident["__analytics"] = analytics_data.get(id)
+        return list(incidents.values())
+
+    @cache_iterator_result()
+    async def get_services(
+        self, params: dict[str, Any] | None = None
+    ) -> AsyncGenerator[list[dict[str, Any]], Any]:
+        logger.info("Fetching services")
+        async for services in self.paginate_request_to_pager_duty(
+            resource=Resources.SERVICES, params=params
+        ):
+            yield services
+
+    async def get_incidents(
+        self, params: dict[str, Any] | None = None
+    ) -> AsyncGenerator[list[dict[str, Any]], Any]:
+        async for incidents in self.paginate_request_to_pager_duty(
+            resource=Resources.INCIDENTS,
+            params=params,
+        ):
+            yield incidents
 
     async def get_service_analytics(
         self, service_ids: list[str], months_period: int = 3
