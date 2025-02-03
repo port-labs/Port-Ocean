@@ -1,15 +1,15 @@
 from typing import Any, Literal, Type, cast
-
-from pydantic import Extra, AnyHttpUrl, parse_obj_as, parse_raw_as
+from pydantic import AnyHttpUrl, Extra, parse_obj_as, parse_raw_as
 from pydantic.class_validators import root_validator, validator
-from pydantic.env_settings import InitSettingsSource, EnvSettingsSource, BaseSettings
+from pydantic.env_settings import BaseSettings, EnvSettingsSource, InitSettingsSource
 from pydantic.fields import Field
 from pydantic.main import BaseModel
 
-from port_ocean.config.base import BaseOceanSettings, BaseOceanModel
+from port_ocean.config.base import BaseOceanModel, BaseOceanSettings
 from port_ocean.core.event_listener import EventListenerSettingsType
 from port_ocean.core.models import CreatePortResourcesOrigin, Runtime
 from port_ocean.utils.misc import get_integration_name, get_spec_file
+from port_ocean.core.utils.utils import load_config_from_file
 
 LogLevelType = Literal["ERROR", "WARNING", "INFO", "DEBUG", "CRITICAL"]
 
@@ -60,6 +60,13 @@ class IntegrationSettings(BaseOceanModel, extra=Extra.allow):
 
         return values
 
+    async def load_integration_config_from_file(self, config_file_path: str) -> None:
+        file_config = await load_config_from_file(self, config_file_path)
+        if isinstance(self.config, dict):
+            self.config = {**self.config, **file_config}
+        else:
+            self.config = {**self.config.dict(), **file_config}
+
 
 class IntegrationConfiguration(BaseOceanSettings, extra=Extra.allow):
     _integration_config_model: BaseModel | None = None
@@ -71,6 +78,8 @@ class IntegrationConfiguration(BaseOceanSettings, extra=Extra.allow):
     # Determines if Port should generate resources such as blueprints and pages instead of ocean
     create_port_resources_origin: CreatePortResourcesOrigin | None = None
     send_raw_data_examples: bool = True
+    config_file_path: str | None = None
+    config_reload_interval: int = 10
     port: PortSettings
     event_listener: EventListenerSettingsType = Field(
         default=cast(EventListenerSettingsType, {"type": "POLLING"})

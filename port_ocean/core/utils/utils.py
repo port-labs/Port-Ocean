@@ -15,6 +15,7 @@ from port_ocean.exceptions.core import (
     RawObjectValidationException,
     IntegrationRuntimeException,
 )
+import yaml
 
 T = TypeVar("T", bound=tuple[list[Any], ...])
 
@@ -183,3 +184,29 @@ def resolve_entities_diff(
             changed_entities.append(entity)
 
     return changed_entities
+
+
+async def load_config_from_file(self: Any, config_file_path: str) -> Any:
+    logger.debug(f"Loading configuration from file: {config_file_path}")
+    try:
+        with open(config_file_path, "r") as f:
+            file_config = yaml.safe_load(f)
+        return file_config
+    except Exception as e:
+        raise ValueError(f"Failed to load configuration from file: {e}")
+
+
+async def refresh_token_from_file(self: Any, config_file_path: str) -> bool:
+    try:
+        config = await load_config_from_file(self, config_file_path)
+        if config.get("token") and config.get("token") != self.token:
+            self.token = config.get("token")
+            return True
+        else:
+            logger.debug(
+                f"Token is the same as the current token or missing: {config.get('token')}"
+            )
+            return False
+    except Exception as e:
+        logger.error(f"Failed to load configuration from file: {e}")
+        return False
