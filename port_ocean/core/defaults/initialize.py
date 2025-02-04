@@ -75,7 +75,7 @@ async def _initialize_required_integration_settings(
                 create_port_resources_origin_in_port=integration_config.create_port_resources_origin
                 == CreatePortResourcesOrigin.Port,
             )
-        elif not integration.get("config"):
+        elif integration.get("config", {}) == {}:
             logger.info(
                 "Encountered that the integration's mapping is empty, Initializing to default mapping"
             )
@@ -213,12 +213,20 @@ async def _initialize_defaults(
         config_class, integration_config.resources_path
     )
 
-    if (
-        not integration_config.create_port_resources_origin
-        and integration_config.runtime.is_saas_runtime
-    ):
-        logger.info("Setting resources origin to be Port")
-        integration_config.create_port_resources_origin = CreatePortResourcesOrigin.Port
+    if not integration_config.create_port_resources_origin:
+        # Need to set default since spec is missing
+        is_integration_provision_enabled = (
+            await port_client.is_integration_provision_enabled(
+                integration_config.integration.type
+            )
+        )
+        if is_integration_provision_enabled:
+            logger.info(
+                f"Setting resources origin to be Port (integration {integration_config.integration.type} is supported)"
+            )
+            integration_config.create_port_resources_origin = (
+                CreatePortResourcesOrigin.Port
+            )
 
     if (
         integration_config.create_port_resources_origin
